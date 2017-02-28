@@ -1,0 +1,112 @@
+#!/bin/bash
+HFMDB_DIR=/dev/shm/
+HFM_details=1
+echo ""
+echo "**************************"
+echo "Hierarchical File Manifest"
+echo "**************************"
+echo ""
+        rm "$HFMDB_DIR".HFM > /dev/null 2>&1
+        rm "$HFMDB_DIR".HFMlog > /dev/null 2>&1
+if [[ $1 = "-help" ]] || [[ $1 = "-?" ]]
+    then
+    echo "Usage:"
+    echo "HFM /path/you/want/to/search/"
+    echo "Then enter a search term."
+    echo "When entering search terms, preceed with -w"
+    echo "for exact matches."
+    echo "Enter a blank search to exit"
+    echo ""
+    echo "HFM writes a small database of files to be"
+    echo "searched.  You can configure where this "
+    echo "database goes, default is /dev/shm/"
+    echo ""
+    echo "HFM -HFMDB_DIR /desired/db/path/ "
+    echo ""
+    echo "HFM will rewrite itself to store the path."
+    echo ""
+    echo "Within HFM, you can run some commands:"
+    echo "HFMstderr - prints the stderr file"
+    echo "HFMdetails - runs HFM with file details"
+    echo "HFMsize - under construction"
+    echo ""
+    exit
+fi
+HFMscript="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"/HFM
+if [[ $1 = "-HFMDB_DIR" ]]
+    then
+    echo "Rewriting HFMDB_DIR path"
+    HFMDB_DIR_SED_ARG1="HFMDB_DIR="$HFMDB_DIR
+    HFMDB_DIR_SED_ARG2="HFMDB_DIR="$2
+    sed -i "2s#$HFMDB_DIR_SED_ARG1#$HFMDB_DIR_SED_ARG2#g" "$HFMscript"
+    HFMDB_DIR=$2
+    echo ""
+    echo $HFMDB_DIR
+    exit
+fi
+if [[ $1 = "-HFMdetails" ]]
+    then
+    if [[ $HFM_details = 0 ]]
+        then
+        sed -i "3s#HFM_details=0#HFM_details=1#g" "$HFMscript"
+        echo "Details activated"
+    else
+        sed -i "3s#HFM_details=1#HFM_details=0#g" "$HFMscript"
+        echo "Details deactivated"
+    fi
+    exit
+fi
+#BREAKPOINT INTO ENGINE
+echo "Building manifest..."
+if [[ $1 != '' ]]
+    then
+    du -ahc $1 2>"$HFMDB_DIR".HFMstderr | sort -h >"$HFMDB_DIR".HFM
+    HFMdir="$1" #This is where things get stupid
+    else
+    du -ahc $(pwd) 2>"$HFMDB_DIR".HFMstderr | sort -h >"$HFMDB_DIR".HFM
+    HFMdir="$PWD"
+    fi
+echo "Manifest ready..."
+search='search'
+while [[ $search != '' ]];
+        do
+        echo "Enter search term:"
+        read -e search
+        if [[ $search = '' ]]
+                then
+                rm "$HFMDB_DIR".HFM > /dev/null 2>&1
+                rm "$HFMDB_DIR".HFMstderr > /dev/null 2>&1
+                rm "$HFMDB_DIR".HFMstdout > /dev/null 2>&1
+                rm "$HFMDB_DIR".HFMdetails > /dev/null 2>&1
+                exit
+                fi
+        if [[ $search = 'HFMstderr' ]]
+                then
+                cat "$HFMDB_DIR".HFMstderr
+                exit
+                fi
+        if [[ $search = 'HFMdetails' ]]
+                then
+                echo "Details on each file"
+                cat "$HFMDB_DIR".HFM | tr '\011' ' ' | cut -d ' ' -f2- >"$HFMDB_DIR".HFMdetails
+                head -n -2 "$HFMDB_DIR".HFMdetails > "$HFMDB_DIR".HFMdetails_temp ;
+                mv "$HFMDB_DIR".HFMdetails_temp "$HFMDB_DIR".HFMdetails
+                while read current_line; do
+                        file $current_line
+                        ls --color -ltr $current_line
+                        echo ""
+                done <"$HFMDB_DIR".HFMdetails
+        fi
+        if [[ $search = 'HFMsize' ]]
+                then
+                echo "Enter size in "-size N" to search for smaller files"
+                echo "Enter size in "+size N" to search for larger files"
+                read -e N
+                echo "$HFMdir " $HFMdir
+                echo "$N " $N
+                find $HFMdir $N -exec du -h {} \; 2>>"$HFMDB_DIR".HFMstderr | sort -h >"$HFMDB_DIR".HFM
+        fi
+        cat "$HFMDB_DIR".HFM | grep $search >"$HFMDB_DIR".HFMstdout
+        mv "$HFMDB_DIR".HFMstdout "$HFMDB_DIR".HFM
+        cat "$HFMDB_DIR".HFM | grep --color $search
+done
